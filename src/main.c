@@ -42,23 +42,23 @@ float distanceConstraint(DistanceConstraint constraint) {
     return fabsf(glm_vec2_distance(constraint.particle_a->position, constraint.particle_b->position)) - constraint.distance;
 }
 
-void distanceJacobian(vec2 point_a, vec2 point_b, vec2 jacobian) {
+void distanceJacobian(vec2 point_a, vec2 point_b, vec4 jacobian) {
     float norm = fabsf(glm_vec2_distance(point_a, point_b));
-    jacobian[0] = (point_a[0] - point_b[0]) / norm;
-    jacobian[1] = (point_a[1] - point_b[1]) / norm;
+    jacobian[0] = point_a[0] / norm;
+    jacobian[1] = point_a[1] / norm;
+    jacobian[2] = point_b[0] / norm;
+    jacobian[3] = point_b[1] / norm;
 }
 
-float distanceViolation(DistanceConstraint constraint, vec2 jacobian, float dt) {
-    vec2 relative_velocity;
-    glm_vec2_sub(constraint.particle_a->velocity, constraint.particle_b->velocity, relative_velocity);
-    return -glm_vec2_dot(jacobian, relative_velocity) - distanceConstraint(constraint) / dt;
+float distanceViolation(DistanceConstraint constraint, vec4 jacobian, float dt) {
+    return -glm_vec4_dot(jacobian, (vec4){constraint.particle_a->velocity[0], constraint.particle_a->velocity[1], constraint.particle_b->velocity[0], constraint.particle_b->velocity[1]}) - distanceConstraint(constraint) / dt;
 }
 
 void applyDistanceConstraint(DistanceConstraint constraint, float dt) {
-    vec2 jacobian;
+    vec4 jacobian;
     distanceJacobian(constraint.particle_a->position, constraint.particle_b->position, jacobian);
-    glm_vec2_muladds(jacobian, distanceViolation(constraint, jacobian, dt) / glm_vec2_dot(jacobian, jacobian), constraint.particle_a->velocity);
-    glm_vec2_mulsubs(jacobian, distanceViolation(constraint, jacobian, dt) / glm_vec2_dot(jacobian, jacobian), constraint.particle_b->velocity);
+    glm_vec2_muladds(&jacobian[0], distanceViolation(constraint, jacobian, dt) / glm_vec4_dot(jacobian, jacobian), constraint.particle_a->velocity);
+    glm_vec2_muladds(&jacobian[2], distanceViolation(constraint, jacobian, dt) / glm_vec4_dot(jacobian, jacobian), constraint.particle_b->velocity);
 }
 
 void applyParticleGravity(Particle* particle, float dt /* delta time */) {

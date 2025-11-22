@@ -84,7 +84,7 @@ int main() {
         applyParticleGravity(&particle_a, dt);
         applyParticleGravity(&particle_b, dt);
 
-        for (u8 i = 0; i < 1; i++) {
+        for (u32 j = 0; j < 1000; j++) {
             applyDistanceConstraint(distance_constraint, dt);
             applyOriginConstraint(origin_constraint, dt);
         }

@@ -73,8 +73,8 @@ int main() {
     InitWindow(800, 600, "constraint solver");
     SetTargetFPS(60);
 
-    Particle particle_a = {.position = {1.0f}};
-    Particle particle_b = {.position = {2.0f}};
+    Particle particle_b = {.position = {0.1f, -2.0f}};
+    Particle particle_a = {.position = {0.0f, -1.0f}};
     OriginConstraint origin_constraint = {.distance = 1.0f, .particle = &particle_a};
     DistanceConstraint distance_constraint = {.distance = 1.0f, .particle_a = &particle_a, .particle_b = &particle_b};
 
@@ -84,9 +84,9 @@ int main() {
         applyParticleGravity(&particle_a, dt);
         applyParticleGravity(&particle_b, dt);
 
-        for (u32 j = 0; j < 1000; j++) {
-            applyDistanceConstraint(distance_constraint, dt);
+        for (u32 j = 0; j < 10; j++) {
             applyOriginConstraint(origin_constraint, dt);
+            applyDistanceConstraint(distance_constraint, dt);
         }
 
         applyParticleVelocity(&particle_a, dt);

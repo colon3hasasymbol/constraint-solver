@@ -2,137 +2,103 @@
 #include <raylib.h>
 #include <elc/core.h>
 
-typedef struct HeapMatrix {
-    float* data;
-    u32 width, height;
-} HeapMatrix;
-
-void createMatrix(u32 width, u32 height, HeapMatrix* matrix) {
-    *matrix = (HeapMatrix){.width = width, .height = height, .data = malloc(width * height * sizeof(float))};
-}
-
-void destroyMatrix(HeapMatrix* matrix) {
-    free(matrix->data);
-}
-
-float indexMatrix(HeapMatrix* matrix, u32 x, u32 y) {
-    return matrix->data[x + (y * matrix->width)];
-}
-
-void setMatrix(HeapMatrix* matrix, u32 x, u32 y, float value) {
-    matrix->data[x + (y * matrix->width)] = value;
-}
-
-void multiplyMatrix(HeapMatrix* matrix_a, HeapMatrix* matrix_b, HeapMatrix* dest) {
-    createMatrix(matrix_b->width, matrix_a->height, dest);
-
-    for (u32 i = 0; i < matrix_a->height; i++)
-        for (u32 j = 0; j < matrix_b->width; j++) {
-            float v = 0.0f;
-            for (u32 k = 0; k < matrix_a->width; k++) v += indexMatrix(matrix_a, i, k) * indexMatrix(matrix_b, k, j);
-
-            setMatrix(dest, i, j, v);
-        }
-}
-
-void componentMultiplyMatrix(HeapMatrix* matrix_a, HeapMatrix* matrix_b, HeapMatrix* dest) {
-    createMatrix(matrix_a->width, matrix_b->width, dest);
-
-    for (u32 i = 0; i < matrix_a->width; i++)
-        for (u32 j = 0; j < matrix_a->height; j++)
-            setMatrix(dest, i, j, indexMatrix(matrix_a, i, j) * indexMatrix(matrix_b, i, j));
-}
-
-void transposeMultiplyMatrix(HeapMatrix* matrix_a, HeapMatrix* matrix_b, HeapMatrix* dest) {
-    createMatrix(matrix_b->width, matrix_a->width, dest);
-
-    for (u32 i = 0; i < matrix_a->width; i++)
-        for (u32 j = 0; j < matrix_b->width; j++) {
-            float v = 0.0f;
-            for (u32 k = 0; k < matrix_a->height; k++) v += indexMatrix(matrix_a, k, i) * indexMatrix(matrix_b, k, j);
-
-            setMatrix(dest, i, j, v);
-        }
-}
-
-void transposeMatrix(HeapMatrix* matrix, HeapMatrix* dest) {
-    createMatrix(matrix->height, matrix->width, dest);
-
-    for (u32 i = 0; i < matrix->width; i++)
-        for (u32 j = 0; j < matrix->height; j++)
-            setMatrix(dest, j, i, indexMatrix(matrix, i, j));
-}
-
-void subtractMatrix(HeapMatrix* matrix_a, HeapMatrix* matrix_b, HeapMatrix* dest) {
-    createMatrix(matrix_a->width, matrix_a->height, dest);
-
-    for (u32 i = 0; i < matrix_a->width; i++)
-        for (u32 j = 0; j < matrix_a->height; j++)
-            setMatrix(dest, i, j, indexMatrix(matrix_a, i, j) - indexMatrix(matrix_b, i, j));
-}
-
-void negateMatrix(HeapMatrix* matrix, HeapMatrix* dest) {
-    createMatrix(matrix->width, matrix->height, dest);
-
-    for (u32 i = 0; i < matrix->width; i++)
-        for (u32 j = 0; j < matrix->height; j++)
-            setMatrix(dest, i, j, -indexMatrix(matrix, i, j));
-}
-
 typedef struct Particle {
     vec2 position;
     vec2 velocity;
 } Particle;
 
-float pointDistanceConstraint(vec2 point, float distance) {
-    return fabsf(glm_vec2_norm(point)) - distance;
+typedef struct DistanceConstraint {
+    Particle* particle_a;
+    Particle* particle_b;
+    float distance;
+} DistanceConstraint;
+
+typedef struct OriginConstraint {
+    Particle* particle;
+    float distance;
+} OriginConstraint;
+
+float originConstraint(OriginConstraint constraint) {
+    return fabsf(glm_vec2_norm(constraint.particle->position)) - constraint.distance;
 }
 
-void pointDistanceJacobian(vec2 point, vec2 jacobian /* using `vec2` as a `mat1x2` */) {
+void originJacobian(vec2 point, vec2 jacobian /* using `vec2` as a `mat1x2` */) {
     float norm = fabsf(glm_vec2_norm(point)); /* length of `point` */
     jacobian[0] = point[0] / norm; /* x / sqrt(x^2 + y^2) */
     jacobian[1] = point[1] / norm; /* y / sqrt(x^2 + y^2) */
 }
 
-float pointDistanceViolation(Particle particle, vec2 jacobian, float dt) {
-    return -glm_vec2_dot(jacobian, particle.velocity) - pointDistanceConstraint(particle.position, 1.0f) / dt;
+float originViolation(OriginConstraint constraint, vec2 jacobian, float dt) {
+    return -glm_vec2_dot(jacobian, constraint.particle->velocity) - originConstraint(constraint) / dt;
 }
 
-void particleApplyGravity(Particle* particle, float dt /* delta time */) {
-    particle->velocity[1] += 9.8f * dt; /* apply gravity * delta time */
-}
-
-void particleApplyConstraint(Particle* particle, float dt) {
+void applyOriginConstraint(OriginConstraint constraint, float dt) {
     vec2 jacobian;
-    pointDistanceJacobian(particle->position, jacobian);
-    glm_vec2_muladds(jacobian, pointDistanceViolation(*particle, jacobian, dt) / glm_vec2_dot(jacobian, jacobian), particle->velocity);
+    originJacobian(constraint.particle->position, jacobian);
+    glm_vec2_muladds(jacobian, originViolation(constraint, jacobian, dt) / glm_vec2_dot(jacobian, jacobian), constraint.particle->velocity);
+}
+
+float distanceConstraint(DistanceConstraint constraint) {
+    return fabsf(glm_vec2_distance(constraint.particle_a->position, constraint.particle_b->position)) - constraint.distance;
+}
+
+void distanceJacobian(vec2 point_a, vec2 point_b, vec2 jacobian) {
+    float norm = fabsf(glm_vec2_distance(point_a, point_b));
+    jacobian[0] = (point_a[0] - point_b[0]) / norm;
+    jacobian[1] = (point_a[1] - point_b[1]) / norm;
+}
+
+float distanceViolation(DistanceConstraint constraint, vec2 jacobian, float dt) {
+    vec2 relative_velocity;
+    glm_vec2_sub(constraint.particle_a->velocity, constraint.particle_b->velocity, relative_velocity);
+    return -glm_vec2_dot(jacobian, relative_velocity) - distanceConstraint(constraint) / dt;
+}
+
+void applyDistanceConstraint(DistanceConstraint constraint, float dt) {
+    vec2 jacobian;
+    distanceJacobian(constraint.particle_a->position, constraint.particle_b->position, jacobian);
+    glm_vec2_muladds(jacobian, distanceViolation(constraint, jacobian, dt) / glm_vec2_dot(jacobian, jacobian), constraint.particle_a->velocity);
+    glm_vec2_mulsubs(jacobian, distanceViolation(constraint, jacobian, dt) / glm_vec2_dot(jacobian, jacobian), constraint.particle_b->velocity);
+}
+
+void applyParticleGravity(Particle* particle, float dt /* delta time */) {
+    particle->velocity[1] += 9.8f * dt; /* apply gravity * delta time */
 }
 
 void applyParticleVelocity(Particle* particle, float dt /* delta time */) {
     glm_vec2_muladds(particle->velocity, dt, particle->position);
 }
 
-void updateParticle(Particle* particle, float dt) {
-    particleApplyGravity(particle, dt);
-    particleApplyConstraint(particle, dt);
-    applyParticleVelocity(particle, dt);
-}
-
 int main() {
     InitWindow(800, 600, "constraint solver");
     SetTargetFPS(60);
 
-    Particle particle = {.position = {1.0f}};
+    Particle particle_a = {.position = {1.0f}};
+    Particle particle_b = {.position = {2.0f}};
+    OriginConstraint origin_constraint = {.distance = 1.0f, .particle = &particle_a};
+    DistanceConstraint distance_constraint = {.distance = 1.0f, .particle_a = &particle_a, .particle_b = &particle_b};
 
     while (!WindowShouldClose()) {
-        updateParticle(&particle, 1.0f / 60.0f);
+        float dt = 1.0f / 60.0f;
+
+        applyParticleGravity(&particle_a, dt);
+        applyParticleGravity(&particle_b, dt);
+
+        for (u8 i = 0; i < 1; i++) {
+            applyDistanceConstraint(distance_constraint, dt);
+            applyOriginConstraint(origin_constraint, dt);
+        }
+
+        applyParticleVelocity(&particle_a, dt);
+        applyParticleVelocity(&particle_b, dt);
 
         BeginDrawing();
 
         ClearBackground(BLACK);
 
         DrawCircle(800 / 2, 600 / 2, 5, YELLOW);
-        DrawCircle(((float)800 / 2) + (particle.position[0] * 50), ((float)600 / 2) + (particle.position[1] * 50), 5, BLUE);
+        DrawCircle(((float)800 / 2) + (particle_a.position[0] * 50), ((float)600 / 2) + (particle_a.position[1] * 50), 5, BLUE);
+        DrawCircle(((float)800 / 2) + (particle_b.position[0] * 50), ((float)600 / 2) + (particle_b.position[1] * 50), 5, RED);
 
         EndDrawing();
     }

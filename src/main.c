@@ -1,3 +1,4 @@
+#include <cglm/vec2.h>
 #include <raylib.h>
 #include <elc/core.h>
 
@@ -78,6 +79,64 @@ void negateMatrix(HeapMatrix* matrix, HeapMatrix* dest) {
             setMatrix(dest, i, j, -indexMatrix(matrix, i, j));
 }
 
+typedef struct Particle {
+    vec2 position;
+    vec2 velocity;
+} Particle;
+
+float pointDistanceConstraint(vec2 point, float distance) {
+    return fabsf(glm_vec2_norm(point)) - distance;
+}
+
+void pointDistanceJacobian(vec2 point, vec2 jacobian /* using `vec2` as a `mat1x2` */) {
+    float norm = fabsf(glm_vec2_norm(point)); /* length of `point` */
+    jacobian[0] = point[0] / norm; /* x / sqrt(x^2 + y^2) */
+    jacobian[1] = point[1] / norm; /* y / sqrt(x^2 + y^2) */
+}
+
+float pointDistanceViolation(Particle particle, vec2 jacobian, float dt) {
+    return -glm_vec2_dot(jacobian, particle.velocity) - pointDistanceConstraint(particle.position, 1.0f) / dt;
+}
+
+void particleApplyGravity(Particle* particle, float dt /* delta time */) {
+    particle->velocity[1] += 9.8f * dt; /* apply gravity * delta time */
+}
+
+void particleApplyConstraint(Particle* particle, float dt) {
+    vec2 jacobian;
+    pointDistanceJacobian(particle->position, jacobian);
+    glm_vec2_muladds(jacobian, pointDistanceViolation(*particle, jacobian, dt) / glm_vec2_dot(jacobian, jacobian), particle->velocity);
+}
+
+void applyParticleVelocity(Particle* particle, float dt /* delta time */) {
+    glm_vec2_muladds(particle->velocity, dt, particle->position);
+}
+
+void updateParticle(Particle* particle, float dt) {
+    particleApplyGravity(particle, dt);
+    particleApplyConstraint(particle, dt);
+    applyParticleVelocity(particle, dt);
+}
+
 int main() {
+    InitWindow(800, 600, "constraint solver");
+    SetTargetFPS(60);
+
+    Particle particle = {.position = {1.0f}};
+
+    while (!WindowShouldClose()) {
+        updateParticle(&particle, 1.0f / 60.0f);
+
+        BeginDrawing();
+
+        ClearBackground(BLACK);
+
+        DrawCircle(800 / 2, 600 / 2, 5, YELLOW);
+        DrawCircle(((float)800 / 2) + (particle.position[0] * 50), ((float)600 / 2) + (particle.position[1] * 50), 5, BLUE);
+
+        EndDrawing();
+    }
+
+    CloseWindow();
     return 0;
 }

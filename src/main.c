@@ -44,10 +44,10 @@ float distanceConstraint(DistanceConstraint constraint) {
 
 void distanceJacobian(vec2 point_a, vec2 point_b, vec4 jacobian) {
     float norm = fabsf(glm_vec2_distance(point_a, point_b));
-    jacobian[0] = point_a[0] / norm;
-    jacobian[1] = point_a[1] / norm;
-    jacobian[2] = point_b[0] / norm;
-    jacobian[3] = point_b[1] / norm;
+    jacobian[0] = -((point_b[0] - point_a[0]) / norm);
+    jacobian[1] = -((point_b[1] - point_a[1]) / norm);
+    jacobian[2] = (point_b[0] - point_a[0]) / norm;
+    jacobian[3] = (point_b[1] - point_a[1]) / norm;
 }
 
 float distanceViolation(DistanceConstraint constraint, vec4 jacobian, float dt) {
@@ -71,15 +71,15 @@ void applyParticleVelocity(Particle* particle, float dt /* delta time */) {
 
 int main() {
     InitWindow(800, 600, "constraint solver");
-    SetTargetFPS(60);
+    SetTargetFPS(120);
 
-    Particle particle_b = {.position = {0.1f, -2.0f}};
-    Particle particle_a = {.position = {0.0f, -1.0f}};
+    Particle particle_b = {.position = {2.0f}};
+    Particle particle_a = {.position = {1.0f}};
     OriginConstraint origin_constraint = {.distance = 1.0f, .particle = &particle_a};
     DistanceConstraint distance_constraint = {.distance = 1.0f, .particle_a = &particle_a, .particle_b = &particle_b};
 
     while (!WindowShouldClose()) {
-        float dt = 1.0f / 60.0f;
+        float dt = 1.0f / 120.0f;
 
         applyParticleGravity(&particle_a, dt);
         applyParticleGravity(&particle_b, dt);

@@ -106,7 +106,7 @@ void resizeParticleTrail(ParticleTrail* trail, u32 max_points) {
 
 void particleTrailAddPoint(ParticleTrail* trail, vec2 point) {
     if (trail->n_points + 1 > trail->max_points) resizeParticleTrail(trail, (trail->max_points * 1.5f) + 1);
-    trail->points[trail->n_points++] = (Vector2){((float)800 / 2) + (point[0] * 50), ((float)600 / 2) + (point[1] * 50)};
+    trail->points[trail->n_points++] = (Vector2){((float)800 / 2) + (point[0] * 75), ((float)600 / 2) + (point[1] * 75)};
 }
 
 void drawParticleTrail(ParticleTrail trail) {
@@ -114,12 +114,12 @@ void drawParticleTrail(ParticleTrail trail) {
 }
 
 void drawParticle(Particle particle, Color color) {
-    Vector2 pos = {((float)800 / 2) + (particle.position[0] * 50), ((float)600 / 2) + (particle.position[1] * 50)};
-    DrawCircleV(pos, 5, color);
-    vec2 rotation_indicator = {3.0f};
+    Vector2 pos = {((float)800 / 2) + (particle.position[0] * 75), ((float)600 / 2) + (particle.position[1] * 75)};
+    DrawCircleV(pos, 10, color);
+    vec2 rotation_indicator = {6.0f};
     glm_vec2_rotate(rotation_indicator, particle.rotation, rotation_indicator);
     glm_vec2_add((float*)&pos, rotation_indicator, (float*)&pos);
-    DrawCircleV(pos, 1.5f, BLACK);
+    DrawCircleV(pos, 3, BLACK);
 }
 
 int main() {
@@ -149,7 +149,7 @@ int main() {
             Vector2 mouse = GetMousePosition();
             glm_vec2_copy((float*)&mouse, spring.position);
             glm_vec2_sub(spring.position, (vec2){800.0f / 2, 600.0f / 2}, spring.position);
-            glm_vec2_divs(spring.position, 50.0f, spring.position);
+            glm_vec2_divs(spring.position, 75.0f, spring.position);
             spring.particle = &particle_c;
             glm_vec2_scale(spring.particle->velocity, 0.75f, spring.particle->velocity);
             applyPositionSpring(spring);
@@ -171,7 +171,7 @@ int main() {
 
         drawParticleTrail(trail);
 
-        DrawCircle(800 / 2, 600 / 2, 5, YELLOW);
+        DrawCircle(800 / 2, 600 / 2, 10, YELLOW);
         drawParticle(particle_a, BLUE);
         drawParticle(particle_b, RED);
         drawParticle(particle_c, ORANGE);

@@ -1,4 +1,5 @@
 #include <cglm/io.h>
+#include <cglm/mat4.h>
 #include <cglm/util.h>
 #include <cglm/vec2.h>
 #include <raylib.h>
@@ -10,6 +11,7 @@ typedef struct Particle {
     vec2 velocity;
     float rotation;
     float omega;
+    float mass;
 } Particle;
 
 typedef struct DistanceConstraint {
@@ -34,7 +36,7 @@ typedef struct PositionSpring {
     float distance, stiffness;
 } PositionSpring;
 
-void createMassMatrix(float m_a, float i_a, float m_b, float i_b, mat6 dest) {
+void createMassInertiaMatrix(float m_a, float i_a, float m_b, float i_b, mat6 dest) {
     elc_mat6_zero(dest);
     dest[0][0] = m_a;
     dest[1][1] = m_a;
@@ -42,6 +44,14 @@ void createMassMatrix(float m_a, float i_a, float m_b, float i_b, mat6 dest) {
     dest[3][3] = m_b;
     dest[4][4] = m_b;
     dest[5][5] = i_b;
+}
+
+void createMassMatrix(float m_a, float m_b, mat4 dest) {
+    glm_mat4_zero(dest);
+    dest[0][0] = m_a;
+    dest[1][1] = m_a;
+    dest[2][2] = m_b;
+    dest[3][3] = m_b;
 }
 
 float originConstraint(OriginConstraint constraint) {
@@ -76,15 +86,24 @@ void distanceJacobian(vec2 point_a, vec2 point_b, vec4 jacobian) {
     jacobian[3] = (point_b[1] - point_a[1]) / norm;
 }
 
+float massImpulseDenominator(vec4 jacobian, mat4 mass) {
+    vec4 jtm;
+    glm_mat4_mulv(mass, jacobian, jtm);
+    return glm_vec4_dot(jtm, jacobian);
+}
+
 float distanceViolation(DistanceConstraint constraint, vec4 jacobian, float dt) {
-    return -glm_vec4_dot(jacobian, (vec4){constraint.particle_a->velocity[0], constraint.particle_a->velocity[1], constraint.particle_b->velocity[0], constraint.particle_b->velocity[1]}) - distanceConstraint(constraint) / dt;
+    return -glm_vec4_dot(jacobian, V2V2_TO_V4(constraint.particle_a->velocity, constraint.particle_b->velocity)) - distanceConstraint(constraint) / dt;
 }
 
 void applyDistanceConstraint(DistanceConstraint constraint, float dt) {
     vec4 jacobian;
+    mat4 mass_matrix;
+    createMassMatrix(constraint.particle_a->mass, constraint.particle_b->mass, mass_matrix);
     distanceJacobian(constraint.particle_a->position, constraint.particle_b->position, jacobian);
-    glm_vec2_muladds(&jacobian[0], distanceViolation(constraint, jacobian, dt) / glm_vec4_dot(jacobian, jacobian), constraint.particle_a->velocity);
-    glm_vec2_muladds(&jacobian[2], distanceViolation(constraint, jacobian, dt) / glm_vec4_dot(jacobian, jacobian), constraint.particle_b->velocity);
+    float den = massImpulseDenominator(jacobian, mass_matrix);
+    glm_vec2_muladds(&jacobian[0], distanceViolation(constraint, jacobian, dt) / den, constraint.particle_a->velocity);
+    glm_vec2_muladds(&jacobian[2], distanceViolation(constraint, jacobian, dt) / den, constraint.particle_b->velocity);
 }
 
 float positionSpringStrength(PositionSpring spring) {
@@ -138,9 +157,9 @@ int main() {
     InitWindow(800, 600, "constraint solver");
     SetTargetFPS(240);
 
-    Particle particle_a = {.position = {1.0f}};
-    Particle particle_b = {.position = {2.0f}};
-    Particle particle_c = {.position = {3.0f}};
+    Particle particle_a = {.position = {1.0f}, .mass = 1.0f};
+    Particle particle_b = {.position = {2.0f}, .mass = 1.0f};
+    Particle particle_c = {.position = {3.0f}, .mass = 1.0f};
     OriginConstraint origin_constraint = {.distance = 1.0f, .particle = &particle_a};
     DistanceConstraint distance_constraint_a = {.distance = 1.0f, .particle_a = &particle_a, .particle_b = &particle_b};
     DistanceConstraint distance_constraint_b = {.distance = 1.0f, .particle_a = &particle_b, .particle_b = &particle_c};

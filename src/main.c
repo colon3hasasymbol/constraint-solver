@@ -9,6 +9,7 @@ typedef struct Particle {
     vec2 position;
     vec2 velocity;
     float rotation;
+    float omega;
 } Particle;
 
 typedef struct DistanceConstraint {
@@ -32,6 +33,16 @@ typedef struct PositionSpring {
     vec2 position;
     float distance, stiffness;
 } PositionSpring;
+
+void createMassMatrix(float m_a, float i_a, float m_b, float i_b, mat6 dest) {
+    elc_mat6_zero(dest);
+    dest[0][0] = m_a;
+    dest[1][1] = m_a;
+    dest[2][2] = i_a;
+    dest[3][3] = m_b;
+    dest[4][4] = m_b;
+    dest[5][5] = i_b;
+}
 
 float originConstraint(OriginConstraint constraint) {
     return fabsf(glm_vec2_norm(constraint.particle->position)) - constraint.distance;
@@ -93,6 +104,7 @@ void applyParticleGravity(Particle* particle, float dt /* delta time */) {
 
 void applyParticleVelocity(Particle* particle, float dt /* delta time */) {
     glm_vec2_muladds(particle->velocity, dt, particle->position);
+    particle->rotation += particle->omega * dt;
 }
 
 ParticleTrail createParticleTrail(u32 max_points) {

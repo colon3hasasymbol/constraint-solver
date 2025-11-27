@@ -9,9 +9,10 @@
 typedef struct Particle {
     vec2 position;
     vec2 velocity;
+    float mass;
     float rotation;
     float omega;
-    float mass;
+    float inertia;
 } Particle;
 
 typedef struct DistanceConstraint {
@@ -24,6 +25,11 @@ typedef struct OriginConstraint {
     Particle* particle;
     float distance;
 } OriginConstraint;
+
+typedef struct AngleConstraint {
+    Particle* particle_a;
+    Particle* particle_b;
+} AngleConstraint;
 
 typedef struct ParticleTrail {
     Vector2* points;
@@ -92,6 +98,12 @@ float massImpulseDenominator(vec4 jacobian, mat4 mass) {
     return glm_vec4_dot(jtm, jacobian);
 }
 
+float inertiaImpulseDenominator(vec6 jacobian, mat6 mass) {
+    vec6 jtm;
+    elc_mat6_mulv(mass, jacobian, jtm);
+    return elc_vec6_dot(jtm, jacobian);
+}
+
 float distanceViolation(DistanceConstraint constraint, vec4 jacobian, float dt) {
     return -glm_vec4_dot(jacobian, V2V2_TO_V4(constraint.particle_a->velocity, constraint.particle_b->velocity)) - distanceConstraint(constraint) / dt;
 }
@@ -104,6 +116,33 @@ void applyDistanceConstraint(DistanceConstraint constraint, float dt) {
     float den = massImpulseDenominator(jacobian, mass_matrix);
     glm_vec2_muladds(&jacobian[0], distanceViolation(constraint, jacobian, dt) / den, constraint.particle_a->velocity);
     glm_vec2_muladds(&jacobian[2], distanceViolation(constraint, jacobian, dt) / den, constraint.particle_b->velocity);
+}
+
+float angleConstraint(AngleConstraint constraint) {
+    return constraint.particle_a->rotation - constraint.particle_b->rotation;
+}
+
+void angleJacobian(vec6 jacobian) {
+    jacobian[0] = 0.0f;
+    jacobian[1] = 0.0f;
+    jacobian[2] = 1.0f;
+    jacobian[3] = 0.0f;
+    jacobian[4] = 0.0f;
+    jacobian[5] = -1.0f;
+}
+
+float angleViolation(AngleConstraint constraint, vec6 jacobian, float dt) {
+    return -elc_vec6_dot(jacobian, V2FV2F_TO_V6(constraint.particle_a->velocity, constraint.particle_a->omega, constraint.particle_b->velocity, constraint.particle_b->omega)) - angleConstraint(constraint) / dt;
+}
+
+void applyAngleConstraint(AngleConstraint constraint, float dt) {
+    vec6 jacobian;
+    mat6 mass_matrix;
+    createMassInertiaMatrix(constraint.particle_a->mass, constraint.particle_a->inertia, constraint.particle_b->mass, constraint.particle_b->inertia, mass_matrix);
+    angleJacobian(jacobian);
+    float den = inertiaImpulseDenominator(jacobian, mass_matrix);
+    constraint.particle_a->omega += jacobian[2] * (angleViolation(constraint, jacobian, dt) / den);
+    constraint.particle_a->omega += jacobian[5] * (angleViolation(constraint, jacobian, dt) / den);
 }
 
 float positionSpringStrength(PositionSpring spring) {
@@ -157,12 +196,13 @@ int main() {
     InitWindow(800, 600, "constraint solver");
     SetTargetFPS(240);
 
-    Particle particle_a = {.position = {1.0f}, .mass = 1.0f};
-    Particle particle_b = {.position = {2.0f}, .mass = 1.0f};
-    Particle particle_c = {.position = {3.0f}, .mass = 1.0f};
+    Particle particle_a = {.position = {1.0f}, .mass = 1.0f, .inertia = 1.0f};
+    Particle particle_b = {.position = {2.0f}, .mass = 1.0f, .inertia = 1.0f};
+    Particle particle_c = {.position = {3.0f}, .mass = 1.0f, .inertia = 1.0f, .omega = 1.0f};
     OriginConstraint origin_constraint = {.distance = 1.0f, .particle = &particle_a};
     DistanceConstraint distance_constraint_a = {.distance = 1.0f, .particle_a = &particle_a, .particle_b = &particle_b};
     DistanceConstraint distance_constraint_b = {.distance = 1.0f, .particle_a = &particle_b, .particle_b = &particle_c};
+    AngleConstraint angle_constraint_a = {.particle_a = &particle_b, .particle_b = &particle_c};
     PositionSpring spring = {.stiffness = 1.0f};
 
     ParticleTrail trail = createParticleTrail(ELC_KILOBYTE);
@@ -190,6 +230,7 @@ int main() {
             applyOriginConstraint(origin_constraint, dt);
             applyDistanceConstraint(distance_constraint_a, dt);
             applyDistanceConstraint(distance_constraint_b, dt);
+            applyAngleConstraint(angle_constraint_a, dt);
         }
 
         applyParticleVelocity(&particle_a, dt);

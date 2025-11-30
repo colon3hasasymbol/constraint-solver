@@ -8,25 +8,15 @@
 #include <math.h>
 #include <raylib.h>
 #include <elc/core.h>
-#include <stdlib.h>
 
 typedef struct Particle {
-    vec2 position;
-    vec2 velocity;
-    float mass;
-    float rotation;
-    float omega;
-    float inertia;
-} Particle;
-
-typedef struct Particle3D {
     vec3 position;
     vec3 velocity;
     float mass;
     versor rotation;
     vec3 omega;
     mat3 inertia;
-} Particle3D;
+} Particle;
 
 typedef struct DistanceConstraint {
     Particle* particle_a;
@@ -34,62 +24,17 @@ typedef struct DistanceConstraint {
     float distance;
 } DistanceConstraint;
 
-typedef struct DistanceConstraint3D {
-    Particle3D* particle_a;
-    Particle3D* particle_b;
-    float distance;
-} DistanceConstraint3D;
-
 typedef struct OriginConstraint {
     Particle* particle;
     float distance;
 } OriginConstraint;
-
-typedef struct OriginConstraint3D {
-    Particle3D* particle;
-    float distance;
-} OriginConstraint3D;
 
 typedef struct AngleConstraint {
     Particle* particle_a;
     Particle* particle_b;
 } AngleConstraint;
 
-typedef struct AngleConstraint3D {
-    Particle3D* particle_a;
-    Particle3D* particle_b;
-} AngleConstraint3D;
-
-typedef struct ParticleTrail {
-    Vector2* points;
-    u32 n_points, max_points;
-} ParticleTrail;
-
-typedef struct PositionSpring {
-    Particle* particle;
-    vec2 position;
-    float distance, stiffness;
-} PositionSpring;
-
-void createMassInertiaMatrix(float m_a, float i_a, float m_b, float i_b, mat6 dest) {
-    elc_mat6_zero(dest);
-    dest[0][0] = m_a;
-    dest[1][1] = m_a;
-    dest[2][2] = i_a;
-    dest[3][3] = m_b;
-    dest[4][4] = m_b;
-    dest[5][5] = i_b;
-}
-
-void createMassMatrix(float m_a, float m_b, mat4 dest) {
-    glm_mat4_zero(dest);
-    dest[0][0] = m_a;
-    dest[1][1] = m_a;
-    dest[2][2] = m_b;
-    dest[3][3] = m_b;
-}
-
-void createMassInertiaMatrix3D(float m_a, mat3 i_a, float m_b, mat3 i_b, mat12 dest) {
+void createMassInertiaMatrix(float m_a, mat3 i_a, float m_b, mat3 i_b, mat12 dest) {
     elc_mat12_zero(dest);
 
     dest[0][0] = m_a;
@@ -105,7 +50,7 @@ void createMassInertiaMatrix3D(float m_a, mat3 i_a, float m_b, mat3 i_b, mat12 d
     for (u8 i = 0; i < 3; i++) for (u8 j = 0; j < 3; j++) dest[i + 9][j + 9] = i_a[i][j];
 }
 
-void createMassMatrix3D(float m_a, float m_b, mat6 dest) {
+void createMassMatrix(float m_a, float m_b, mat6 dest) {
     elc_mat6_zero(dest);
     dest[0][0] = m_a;
     dest[1][1] = m_a;
@@ -116,63 +61,31 @@ void createMassMatrix3D(float m_a, float m_b, mat6 dest) {
 }
 
 float originConstraint(OriginConstraint constraint) {
-    return fabsf(glm_vec2_norm(constraint.particle->position)) - constraint.distance;
-}
-
-float originConstraint3D(OriginConstraint3D constraint) {
     return fabsf(glm_vec3_norm(constraint.particle->position)) - constraint.distance;
 }
 
-void originJacobian(vec2 point, vec2 jacobian /* using `vec2` as a `mat1x2` */) {
-    float norm = fabsf(glm_vec2_norm(point)); /* length of `point` */
-    jacobian[0] = point[0] / norm; /* x / sqrt(x^2 + y^2) */
-    jacobian[1] = point[1] / norm; /* y / sqrt(x^2 + y^2) */
-}
-
-void originJacobian3D(vec3 point, vec3 jacobian) {
+void originJacobian(vec3 point, vec3 jacobian) {
     float norm = fabsf(glm_vec3_norm(point));
     jacobian[0] = point[0] / norm;
     jacobian[1] = point[1] / norm;
     jacobian[2] = point[2] / norm;
 }
 
-float originViolation(OriginConstraint constraint, vec2 jacobian, float dt) {
-    return -glm_vec2_dot(jacobian, constraint.particle->velocity) - originConstraint(constraint) / dt;
-}
-
-float originViolation3D(OriginConstraint3D constraint, vec3 jacobian, float dt) {
-    return -glm_vec3_dot(jacobian, constraint.particle->velocity) - originConstraint3D(constraint) / dt;
+float originViolation(OriginConstraint constraint, vec3 jacobian, float dt) {
+    return -glm_vec3_dot(jacobian, constraint.particle->velocity) - originConstraint(constraint) / dt;
 }
 
 void applyOriginConstraint(OriginConstraint constraint, float dt) {
-    vec2 jacobian;
-    originJacobian(constraint.particle->position, jacobian);
-    glm_vec2_muladds(jacobian, originViolation(constraint, jacobian, dt) / glm_vec2_dot(jacobian, jacobian), constraint.particle->velocity);
-}
-
-void applyOriginConstraint3D(OriginConstraint3D constraint, float dt) {
     vec3 jacobian;
-    originJacobian3D(constraint.particle->position, jacobian);
-    glm_vec3_muladds(jacobian, originViolation3D(constraint, jacobian, dt) / glm_vec3_dot(jacobian, jacobian), constraint.particle->velocity);
+    originJacobian(constraint.particle->position, jacobian);
+    glm_vec3_muladds(jacobian, originViolation(constraint, jacobian, dt) / glm_vec3_dot(jacobian, jacobian), constraint.particle->velocity);
 }
 
 float distanceConstraint(DistanceConstraint constraint) {
-    return fabsf(glm_vec2_distance(constraint.particle_a->position, constraint.particle_b->position)) - constraint.distance;
-}
-
-float distanceConstraint3D(DistanceConstraint3D constraint) {
     return fabsf(glm_vec3_distance(constraint.particle_a->position, constraint.particle_b->position)) - constraint.distance;
 }
 
-void distanceJacobian(vec2 point_a, vec2 point_b, vec4 jacobian) {
-    float norm = fabsf(glm_vec2_distance(point_a, point_b));
-    jacobian[0] = -((point_b[0] - point_a[0]) / norm);
-    jacobian[1] = -((point_b[1] - point_a[1]) / norm);
-    jacobian[2] = (point_b[0] - point_a[0]) / norm;
-    jacobian[3] = (point_b[1] - point_a[1]) / norm;
-}
-
-void distanceJacobian3D(vec3 point_a, vec3 point_b, vec6 jacobian) {
+void distanceJacobian(vec3 point_a, vec3 point_b, vec6 jacobian) {
     float norm = fabsf(glm_vec3_distance(point_a, point_b));
     jacobian[0] = -((point_b[0] - point_a[0]) / norm);
     jacobian[1] = -((point_b[1] - point_a[1]) / norm);
@@ -182,142 +95,42 @@ void distanceJacobian3D(vec3 point_a, vec3 point_b, vec6 jacobian) {
     jacobian[5] = (point_b[2] - point_a[2]) / norm;
 }
 
-float massImpulseDenominator(vec4 jacobian, mat4 mass) {
-    vec4 jtm;
-    glm_mat4_mulv(mass, jacobian, jtm);
-    return glm_vec4_dot(jtm, jacobian);
-}
-
-float massImpulseDenominator3D(vec6 jacobian, mat6 mass) {
+float massImpulseDenominator(vec6 jacobian, mat6 mass) {
     vec6 jtm;
     elc_mat6_mulv(mass, jacobian, jtm);
     return elc_vec6_dot(jtm, jacobian);
 }
 
-float inertiaImpulseDenominator(vec6 jacobian, mat6 mass) {
-    vec6 jtm;
-    elc_mat6_mulv(mass, jacobian, jtm);
-    return elc_vec6_dot(jtm, jacobian);
-}
-
-float inertiaImpulseDenominator3D(vec12 jacobian, mat12 mass) {
+float inertiaImpulseDenominator(vec12 jacobian, mat12 mass) {
     vec12 jtm;
     elc_mat12_mulv(mass, jacobian, jtm);
     return elc_vec12_dot(jtm, jacobian);
 }
 
-float distanceViolation(DistanceConstraint constraint, vec4 jacobian, float dt) {
-    return -glm_vec4_dot(jacobian, V2V2_TO_V4(constraint.particle_a->velocity, constraint.particle_b->velocity)) - distanceConstraint(constraint) / dt;
-}
-
-float distanceViolation3D(DistanceConstraint3D constraint, vec6 jacobian, float dt) {
-    return -elc_vec6_dot(jacobian, V3V3_TO_V6(constraint.particle_a->velocity, constraint.particle_b->velocity)) - distanceConstraint3D(constraint) / dt;
+float distanceViolation(DistanceConstraint constraint, vec6 jacobian, float dt) {
+    return -elc_vec6_dot(jacobian, V3V3_TO_V6(constraint.particle_a->velocity, constraint.particle_b->velocity)) - distanceConstraint(constraint) / dt;
 }
 
 void applyDistanceConstraint(DistanceConstraint constraint, float dt) {
-    vec4 jacobian;
-    mat4 mass_matrix;
+    vec6 jacobian;
+    mat6 mass_matrix;
     createMassMatrix(constraint.particle_a->mass, constraint.particle_b->mass, mass_matrix);
     distanceJacobian(constraint.particle_a->position, constraint.particle_b->position, jacobian);
     float den = massImpulseDenominator(jacobian, mass_matrix);
-    glm_vec2_muladds(&jacobian[0], distanceViolation(constraint, jacobian, dt) / den, constraint.particle_a->velocity);
-    glm_vec2_muladds(&jacobian[2], distanceViolation(constraint, jacobian, dt) / den, constraint.particle_b->velocity);
+    glm_vec3_muladds(&jacobian[0], distanceViolation(constraint, jacobian, dt) / den, constraint.particle_a->velocity);
+    glm_vec3_muladds(&jacobian[3], distanceViolation(constraint, jacobian, dt) / den, constraint.particle_b->velocity);
 }
 
-void applyDistanceConstraint3D(DistanceConstraint3D constraint, float dt) {
-    vec6 jacobian;
-    mat6 mass_matrix;
-    createMassMatrix3D(constraint.particle_a->mass, constraint.particle_b->mass, mass_matrix);
-    distanceJacobian3D(constraint.particle_a->position, constraint.particle_b->position, jacobian);
-    float den = massImpulseDenominator3D(jacobian, mass_matrix);
-    glm_vec3_muladds(&jacobian[0], distanceViolation3D(constraint, jacobian, dt) / den, constraint.particle_a->velocity);
-    glm_vec3_muladds(&jacobian[3], distanceViolation3D(constraint, jacobian, dt) / den, constraint.particle_b->velocity);
-}
-
-float angleConstraint(AngleConstraint constraint) {
-    return constraint.particle_a->rotation - constraint.particle_b->rotation;
-}
-
-void angleJacobian(vec6 jacobian) {
-    jacobian[0] = 0.0f;
-    jacobian[1] = 0.0f;
-    jacobian[2] = 1.0f;
-    jacobian[3] = 0.0f;
-    jacobian[4] = 0.0f;
-    jacobian[5] = -1.0f;
-}
-
-float angleViolation(AngleConstraint constraint, vec6 jacobian, float dt) {
-    return -elc_vec6_dot(jacobian, V2FV2F_TO_V6(constraint.particle_a->velocity, constraint.particle_a->omega, constraint.particle_b->velocity, constraint.particle_b->omega)) - angleConstraint(constraint) / dt;
-}
-
-void applyAngleConstraint(AngleConstraint constraint, float dt) {
-    vec6 jacobian;
-    mat6 mass_matrix;
-    createMassInertiaMatrix(constraint.particle_a->mass, constraint.particle_a->inertia, constraint.particle_b->mass, constraint.particle_b->inertia, mass_matrix);
-    angleJacobian(jacobian);
-    float den = inertiaImpulseDenominator(jacobian, mass_matrix);
-    constraint.particle_a->omega += jacobian[2] * (angleViolation(constraint, jacobian, dt) / den);
-    constraint.particle_a->omega += jacobian[5] * (angleViolation(constraint, jacobian, dt) / den);
-}
-
-float positionSpringStrength(PositionSpring spring) {
-    return (fabsf(glm_vec2_distance(spring.position, spring.particle->position)) - spring.distance) * spring.stiffness;
-}
-
-void applyPositionSpring(PositionSpring spring) {
-    vec2 direction;
-    glm_vec2_sub(spring.position, spring.particle->position, direction);
-    glm_vec2_normalize(direction);
-    glm_vec2_muladds(direction, positionSpringStrength(spring), spring.particle->velocity);
-}
-
-void applyParticleGravity(Particle* particle, float dt /* delta time */) {
-    particle->velocity[1] += 9.8f * dt; /* apply gravity * delta time */
-}
-
-void applyParticleGravity3D(Particle3D* particle, float dt) {
+void applyParticleGravity(Particle* particle, float dt) {
     particle->velocity[1] -= 9.8f * dt;
 }
 
-void applyParticleVelocity(Particle* particle, float dt /* delta time */) {
-    glm_vec2_muladds(particle->velocity, dt, particle->position);
-    particle->rotation += particle->omega * dt;
-}
-
-void applyParticleVelocity3D(Particle3D* particle, float dt) {
+void applyParticleVelocity(Particle* particle, float dt) {
     glm_vec3_muladds(particle->velocity, dt, particle->position);
 }
 
-ParticleTrail createParticleTrail(u32 max_points) {
-    return (ParticleTrail){.max_points = max_points, .points = malloc(max_points * sizeof(Vector2))};
-}
-
-void resizeParticleTrail(ParticleTrail* trail, u32 max_points) {
-    trail->max_points = max_points;
-    trail->points = realloc(trail->points, max_points * sizeof(Vector2));
-}
-
-void particleTrailAddPoint(ParticleTrail* trail, vec2 point) {
-    if (trail->n_points + 1 > trail->max_points) resizeParticleTrail(trail, (trail->max_points * 1.5f) + 1);
-    trail->points[trail->n_points++] = (Vector2){((float)800 / 2) + (point[0] * 75), ((float)600 / 2) + (point[1] * 75)};
-}
-
-void drawParticleTrail(ParticleTrail trail) {
-    DrawLineStrip(trail.points, trail.n_points, WHITE);
-}
-
 void drawParticle(Particle particle, Color color) {
-    Vector2 pos = {((float)800 / 2) + (particle.position[0] * 75), ((float)600 / 2) + (particle.position[1] * 75)};
-    DrawCircleV(pos, 10, color);
-    vec2 rotation_indicator = {6.0f};
-    glm_vec2_rotate(rotation_indicator, particle.rotation, rotation_indicator);
-    glm_vec2_add((float*)&pos, rotation_indicator, (float*)&pos);
-    DrawCircleV(pos, 3, BLACK);
-}
-
-void drawParticle3D(Particle3D particle, Color color) {
-    DrawSphere((Vector3)VEC3_USE(particle.position), 1.0f, color);
+    DrawCube((Vector3)VEC3_USE(particle.position), 1.0f, 1.0f, 1.0f, color);
 }
 
 int main() {
@@ -331,32 +144,32 @@ int main() {
     camera.fovy = 45.0f;
     camera.projection = CAMERA_PERSPECTIVE;
 
-    Particle3D particle_a = {.mass = 1.0f, .position = {10.0f}};
-    Particle3D particle_b = {.mass = 1.0f, .position = {20.0f}};
-    OriginConstraint3D origin_constraint_a = {.particle = &particle_a, .distance = 10.0f};
-    DistanceConstraint3D distance_constraint_a = {.particle_a = &particle_a, .particle_b = &particle_b, .distance = 10.0f};
+    Particle particle_a = {.mass = 1.0f, .position = {10.0f}};
+    Particle particle_b = {.mass = 1.0f, .position = {20.0f}};
+    OriginConstraint origin_constraint_a = {.particle = &particle_a, .distance = 10.0f};
+    DistanceConstraint distance_constraint_a = {.particle_a = &particle_a, .particle_b = &particle_b, .distance = 10.0f};
 
     while (!WindowShouldClose()) {
         float dt = (1.0f / 240.0f) / 1.0f;
 
-        applyParticleGravity3D(&particle_a, dt);
-        applyParticleGravity3D(&particle_b, dt);
+        applyParticleGravity(&particle_a, dt);
+        applyParticleGravity(&particle_b, dt);
 
         for (u32 i = 0; i < 20; i++) {
-            applyOriginConstraint3D(origin_constraint_a, dt);
-            applyDistanceConstraint3D(distance_constraint_a, dt);
+            applyOriginConstraint(origin_constraint_a, dt);
+            applyDistanceConstraint(distance_constraint_a, dt);
         }
 
-        applyParticleVelocity3D(&particle_a, dt);
-        applyParticleVelocity3D(&particle_b, dt);
+        applyParticleVelocity(&particle_a, dt);
+        applyParticleVelocity(&particle_b, dt);
 
         BeginDrawing();
         ClearBackground(BLACK);
         BeginMode3D(camera);
 
         DrawSphere((Vector3){0}, 1.0f, YELLOW);
-        drawParticle3D(particle_a, BLUE);
-        drawParticle3D(particle_b, RED);
+        drawParticle(particle_a, BLUE);
+        drawParticle(particle_b, RED);
 
         EndMode3D();
         DrawFPS(10, 10);

@@ -144,10 +144,10 @@ int main() {
     camera.fovy = 45.0f;
     camera.projection = CAMERA_PERSPECTIVE;
 
-    Particle particle_a = {.mass = 1.0f, .position = {10.0f}};
-    Particle particle_b = {.mass = 1.0f, .position = {20.0f}};
-    OriginConstraint origin_constraint_a = {.particle = &particle_a, .distance = 10.0f};
-    DistanceConstraint distance_constraint_a = {.particle_a = &particle_a, .particle_b = &particle_b, .distance = 10.0f};
+    Particle particle_a = {.mass = 1.0f, .position = {5.0f}};
+    Particle particle_b = {.mass = 1.0f, .position = {10.0f}};
+    OriginConstraint origin_constraint_a = {.particle = &particle_a, .distance = 5.0f};
+    DistanceConstraint distance_constraint_a = {.particle_a = &particle_a, .particle_b = &particle_b, .distance = 5.0f};
 
     while (!WindowShouldClose()) {
         float dt = (1.0f / 240.0f) / 1.0f;
@@ -167,7 +167,7 @@ int main() {
         ClearBackground(BLACK);
         BeginMode3D(camera);
 
-        DrawSphere((Vector3){0}, 1.0f, YELLOW);
+        DrawCube((Vector3){0}, 1.0f, 1.0f, 1.0f, YELLOW);
         drawParticle(particle_a, BLUE);
         drawParticle(particle_b, RED);
 

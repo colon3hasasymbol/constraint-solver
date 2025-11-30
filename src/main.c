@@ -2,6 +2,7 @@
 #include <cglm/mat4.h>
 #include <cglm/util.h>
 #include <cglm/vec2.h>
+#include <math.h>
 #include <raylib.h>
 #include <elc/core.h>
 #include <stdlib.h>
@@ -58,6 +59,32 @@ void createMassMatrix(float m_a, float m_b, mat4 dest) {
     dest[1][1] = m_a;
     dest[2][2] = m_b;
     dest[3][3] = m_b;
+}
+
+void createMassInertiaMatrix3D(float m_a, mat3 i_a, float m_b, mat3 i_b, mat12 dest) {
+    elc_mat12_zero(dest);
+
+    dest[0][0] = m_a;
+    dest[1][1] = m_a;
+    dest[2][2] = m_a;
+
+    for (u8 i = 0; i < 3; i++) for (u8 j = 0; j < 3; j++) dest[i + 3][j + 3] = i_a[i][j];
+
+    dest[6][6] = m_b;
+    dest[7][7] = m_b;
+    dest[8][8] = m_b;
+
+    for (u8 i = 0; i < 3; i++) for (u8 j = 0; j < 3; j++) dest[i + 9][j + 9] = i_a[i][j];
+}
+
+void createMassMatrix3D(float m_a, float m_b, mat6 dest) {
+    elc_mat6_zero(dest);
+    dest[0][0] = m_a;
+    dest[1][1] = m_a;
+    dest[2][2] = m_a;
+    dest[3][3] = m_b;
+    dest[4][4] = m_b;
+    dest[5][5] = m_b;
 }
 
 float originConstraint(OriginConstraint constraint) {

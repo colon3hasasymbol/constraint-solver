@@ -1,4 +1,5 @@
 #include <cglm/io.h>
+#include <cglm/mat3.h>
 #include <cglm/mat4.h>
 #include <cglm/quat.h>
 #include <cglm/types.h>
@@ -33,6 +34,13 @@ typedef struct AngleConstraint {
     Particle* particle_a;
     Particle* particle_b;
 } AngleConstraint;
+
+void createSphereInertiaTensor(float radius, mat3 dest) {
+    glm_mat3_zero(dest);
+    dest[0][0] = 1.0f / radius;
+    dest[1][1] = 1.0f / radius;
+    dest[2][2] = 1.0f / radius;
+}
 
 void createMassInertiaMatrix(float m_a, mat3 i_a, float m_b, mat3 i_b, mat12 dest) {
     elc_mat12_zero(dest);
@@ -127,10 +135,31 @@ void applyParticleGravity(Particle* particle, float dt) {
 
 void applyParticleVelocity(Particle* particle, float dt) {
     glm_vec3_muladds(particle->velocity, dt, particle->position);
+
+    vec3 alpha;
+    glm_mat3_mulv(particle->inertia, particle->omega, alpha);
+    glm_vec3_cross(particle->omega, alpha, alpha);
+    glm_mat3_inv(particle->inertia, particle->inertia);
+    glm_mat3_mulv(particle->inertia, alpha, alpha);
+    glm_vec3_muladds(alpha, dt, particle->omega);
+
+    float angle = glm_vec3_norm(particle->omega);
+    vec3 axis;
+    glm_vec3_normalize_to(particle->omega, axis);
+    versor rotation;
+    glm_quatv(rotation, angle * 0.5f * dt, axis);
+    glm_quat_mul(particle->rotation, rotation, particle->rotation);
+    glm_quat_normalize(particle->rotation);
 }
 
-void drawParticle(Particle particle, Color color) {
-    DrawCube((Vector3)VEC3_USE(particle.position), 1.0f, 1.0f, 1.0f, color);
+Matrix particleTransform(Particle particle) {
+    mat4 transform, rotation;
+    glm_quat_mat4(particle.rotation, rotation);
+    glm_scale_make(transform, (vec3){1.0f, 1.0f, 1.0f});
+    glm_translate(transform, particle.position);
+    glm_mat4_mul(transform, rotation, transform);
+    glm_mat4_transpose(transform);
+    return *((Matrix*)&transform);
 }
 
 int main() {
@@ -144,8 +173,11 @@ int main() {
     camera.fovy = 45.0f;
     camera.projection = CAMERA_PERSPECTIVE;
 
-    Particle particle_a = {.mass = 1.0f, .position = {5.0f}};
-    Particle particle_b = {.mass = 1.0f, .position = {10.0f}};
+    Mesh cube_mesh = GenMeshCube(1.0f, 1.0f, 1.0f);
+    Model cube_model = LoadModelFromMesh(cube_mesh);
+
+    Particle particle_a = {.mass = 1.0f, .position = {5.0f}, .inertia = GLM_MAT3_IDENTITY_INIT};
+    Particle particle_b = {.mass = 1.0f, .position = {10.0f}, .inertia = GLM_MAT3_IDENTITY_INIT};
     OriginConstraint origin_constraint_a = {.particle = &particle_a, .distance = 5.0f};
     DistanceConstraint distance_constraint_a = {.particle_a = &particle_a, .particle_b = &particle_b, .distance = 5.0f};
 
@@ -168,8 +200,10 @@ int main() {
         BeginMode3D(camera);
 
         DrawCube((Vector3){0}, 1.0f, 1.0f, 1.0f, YELLOW);
-        drawParticle(particle_a, BLUE);
-        drawParticle(particle_b, RED);
+        cube_model.transform = particleTransform(particle_a);
+        DrawModel(cube_model, (Vector3){0}, 1.0f, BLUE);
+        cube_model.transform = particleTransform(particle_b);
+        DrawModel(cube_model, (Vector3){0}, 1.0f, RED);
 
         EndMode3D();
         DrawFPS(10, 10);

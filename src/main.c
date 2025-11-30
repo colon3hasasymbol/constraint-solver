@@ -277,7 +277,7 @@ void applyParticleGravity(Particle* particle, float dt /* delta time */) {
 }
 
 void applyParticleGravity3D(Particle3D* particle, float dt) {
-    particle->velocity[1] += 9.8f * dt;
+    particle->velocity[1] -= 9.8f * dt;
 }
 
 void applyParticleVelocity(Particle* particle, float dt /* delta time */) {
@@ -324,62 +324,42 @@ int main() {
     InitWindow(800, 600, "constraint solver");
     SetTargetFPS(240);
 
-    Particle particle_a = {.position = {1.0f}, .mass = 1.0f, .inertia = 1.0f};
-    Particle particle_b = {.position = {2.0f}, .mass = 1.0f, .inertia = 1.0f};
-    Particle particle_c = {.position = {3.0f}, .mass = 1.0f, .inertia = 1.0f, .omega = 1.0f};
-    OriginConstraint origin_constraint = {.distance = 1.0f, .particle = &particle_a};
-    DistanceConstraint distance_constraint_a = {.distance = 1.0f, .particle_a = &particle_a, .particle_b = &particle_b};
-    DistanceConstraint distance_constraint_b = {.distance = 1.0f, .particle_a = &particle_b, .particle_b = &particle_c};
-    AngleConstraint angle_constraint_a = {.particle_a = &particle_b, .particle_b = &particle_c};
-    PositionSpring spring = {.stiffness = 1.0f};
+    Camera3D camera = { 0 };
+    camera.position = (Vector3){ 40.0f, 40.0f, 40.0f };
+    camera.target = (Vector3){ 0.0f, 0.0f, 0.0f };
+    camera.up = (Vector3){ 0.0f, 1.0f, 0.0f };
+    camera.fovy = 45.0f;
+    camera.projection = CAMERA_PERSPECTIVE;
 
-    ParticleTrail trail = createParticleTrail(ELC_KILOBYTE);
+    Particle3D particle_a = {.mass = 1.0f, .position = {10.0f}};
+    Particle3D particle_b = {.mass = 1.0f, .position = {20.0f}};
+    OriginConstraint3D origin_constraint_a = {.particle = &particle_a, .distance = 10.0f};
+    DistanceConstraint3D distance_constraint_a = {.particle_a = &particle_a, .particle_b = &particle_b, .distance = 10.0f};
 
     while (!WindowShouldClose()) {
         float dt = (1.0f / 240.0f) / 1.0f;
 
-        particleTrailAddPoint(&trail, particle_c.position);
+        applyParticleGravity3D(&particle_a, dt);
+        applyParticleGravity3D(&particle_b, dt);
 
-        for (u32 i = 0; i < 1; i++) {
-            applyParticleGravity(&particle_a, dt);
-            applyParticleGravity(&particle_b, dt);
-            applyParticleGravity(&particle_c, dt);
-
-            if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-                Vector2 mouse = GetMousePosition();
-                glm_vec2_copy((float*)&mouse, spring.position);
-                glm_vec2_sub(spring.position, (vec2){800.0f / 2, 600.0f / 2}, spring.position);
-                glm_vec2_divs(spring.position, 75.0f, spring.position);
-                spring.particle = &particle_c;
-                glm_vec2_scale(spring.particle->velocity, 0.75f, spring.particle->velocity);
-                applyPositionSpring(spring);
-            }
-
-            for (u32 j = 0; j < 20; j++) {
-                applyOriginConstraint(origin_constraint, dt);
-                applyDistanceConstraint(distance_constraint_a, dt);
-                applyDistanceConstraint(distance_constraint_b, dt);
-                applyAngleConstraint(angle_constraint_a, dt);
-            }
-
-            applyParticleVelocity(&particle_a, dt);
-            applyParticleVelocity(&particle_b, dt);
-            applyParticleVelocity(&particle_c, dt);
+        for (u32 i = 0; i < 20; i++) {
+            applyOriginConstraint3D(origin_constraint_a, dt);
+            applyDistanceConstraint3D(distance_constraint_a, dt);
         }
 
+        applyParticleVelocity3D(&particle_a, dt);
+        applyParticleVelocity3D(&particle_b, dt);
+
         BeginDrawing();
-
         ClearBackground(BLACK);
+        BeginMode3D(camera);
 
-        drawParticleTrail(trail);
+        DrawSphere((Vector3){0}, 1.0f, YELLOW);
+        drawParticle3D(particle_a, BLUE);
+        drawParticle3D(particle_b, RED);
 
-        DrawCircle(800 / 2, 600 / 2, 10, YELLOW);
-        drawParticle(particle_a, BLUE);
-        drawParticle(particle_b, RED);
-        drawParticle(particle_c, ORANGE);
-
+        EndMode3D();
         DrawFPS(10, 10);
-
         EndDrawing();
     }
 

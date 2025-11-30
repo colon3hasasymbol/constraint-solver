@@ -208,34 +208,36 @@ int main() {
     ParticleTrail trail = createParticleTrail(ELC_KILOBYTE);
 
     while (!WindowShouldClose()) {
-        float dt = 1.0f / 240.0f;
+        float dt = (1.0f / 240.0f) / 1.0f;
 
         particleTrailAddPoint(&trail, particle_c.position);
 
-        applyParticleGravity(&particle_a, dt);
-        applyParticleGravity(&particle_b, dt);
-        applyParticleGravity(&particle_c, dt);
+        for (u32 i = 0; i < 1; i++) {
+            applyParticleGravity(&particle_a, dt);
+            applyParticleGravity(&particle_b, dt);
+            applyParticleGravity(&particle_c, dt);
 
-        if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-            Vector2 mouse = GetMousePosition();
-            glm_vec2_copy((float*)&mouse, spring.position);
-            glm_vec2_sub(spring.position, (vec2){800.0f / 2, 600.0f / 2}, spring.position);
-            glm_vec2_divs(spring.position, 75.0f, spring.position);
-            spring.particle = &particle_c;
-            glm_vec2_scale(spring.particle->velocity, 0.75f, spring.particle->velocity);
-            applyPositionSpring(spring);
+            if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+                Vector2 mouse = GetMousePosition();
+                glm_vec2_copy((float*)&mouse, spring.position);
+                glm_vec2_sub(spring.position, (vec2){800.0f / 2, 600.0f / 2}, spring.position);
+                glm_vec2_divs(spring.position, 75.0f, spring.position);
+                spring.particle = &particle_c;
+                glm_vec2_scale(spring.particle->velocity, 0.75f, spring.particle->velocity);
+                applyPositionSpring(spring);
+            }
+
+            for (u32 j = 0; j < 20; j++) {
+                applyOriginConstraint(origin_constraint, dt);
+                applyDistanceConstraint(distance_constraint_a, dt);
+                applyDistanceConstraint(distance_constraint_b, dt);
+                applyAngleConstraint(angle_constraint_a, dt);
+            }
+
+            applyParticleVelocity(&particle_a, dt);
+            applyParticleVelocity(&particle_b, dt);
+            applyParticleVelocity(&particle_c, dt);
         }
-
-        for (u32 j = 0; j < 20; j++) {
-            applyOriginConstraint(origin_constraint, dt);
-            applyDistanceConstraint(distance_constraint_a, dt);
-            applyDistanceConstraint(distance_constraint_b, dt);
-            applyAngleConstraint(angle_constraint_a, dt);
-        }
-
-        applyParticleVelocity(&particle_a, dt);
-        applyParticleVelocity(&particle_b, dt);
-        applyParticleVelocity(&particle_c, dt);
 
         BeginDrawing();
 

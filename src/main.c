@@ -222,6 +222,13 @@ Matrix particleTransform(Particle particle) {
     return *((Matrix*)&transform);
 }
 
+void drawBallJointConstraint(BallJointConstraint constraint, Color color) {
+    vec3 world_anchor_a;
+    glm_quat_rotatev(constraint.particle_a->rotation, constraint.anchor_a, world_anchor_a);
+    glm_vec3_add(world_anchor_a, constraint.particle_a->position, world_anchor_a);
+    DrawSphere((Vector3)VEC3_USE(world_anchor_a), 0.25f, color);
+}
+
 int main() {
     InitWindow(800, 600, "constraint solver");
     SetTargetFPS(240);
@@ -239,7 +246,7 @@ int main() {
     Particle particle_a = {.mass = 1.0f, .position = {5.0f}, .inertia = GLM_MAT3_IDENTITY_INIT};
     Particle particle_b = {.mass = 1.0f, .position = {10.0f}, .inertia = GLM_MAT3_IDENTITY_INIT};
     OriginConstraint origin_constraint_a = {.particle = &particle_a, .distance = 5.0f};
-    DistanceConstraint distance_constraint_a = {.particle_a = &particle_a, .particle_b = &particle_b, .distance = 5.0f};
+    BallJointConstraint distance_constraint_a = {.particle_a = &particle_a, .particle_b = &particle_b, .anchor_a = {2.5f}, .anchor_b = {2.5f}};
 
     while (!WindowShouldClose()) {
         float dt = (1.0f / 240.0f) / 1.0f;
@@ -249,7 +256,7 @@ int main() {
 
         for (u32 i = 0; i < 20; i++) {
             applyOriginConstraint(origin_constraint_a, dt);
-            applyDistanceConstraint(distance_constraint_a, dt);
+            applyBallJointConstraint(distance_constraint_a, dt);
         }
 
         applyParticleVelocity(&particle_a, dt);
@@ -264,6 +271,7 @@ int main() {
         DrawModel(cube_model, (Vector3){0}, 1.0f, BLUE);
         cube_model.transform = particleTransform(particle_b);
         DrawModel(cube_model, (Vector3){0}, 1.0f, RED);
+        drawBallJointConstraint(distance_constraint_a, ORANGE);
 
         EndMode3D();
         DrawFPS(10, 10);

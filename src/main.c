@@ -20,10 +20,16 @@ typedef struct Particle {
     mat3 inertia;
 } Particle;
 
-typedef struct DistanceConstraint {
+typedef struct BallJointConstraint {
     Particle* particle_a;
     Particle* particle_b;
     vec3 anchor_a, anchor_b;
+} BallJointConstraint;
+
+typedef struct DistanceConstraint {
+    Particle* particle_a;
+    Particle* particle_b;
+    float distance;
 } DistanceConstraint;
 
 typedef struct OriginConstraint {
@@ -90,7 +96,7 @@ void applyOriginConstraint(OriginConstraint constraint, float dt) {
     glm_vec3_muladds(jacobian, originViolation(constraint, jacobian, dt) / glm_vec3_dot(jacobian, jacobian), constraint.particle->velocity);
 }
 
-float distanceConstraint(DistanceConstraint constraint) {
+float ballJointConstraint(BallJointConstraint constraint) {
     vec3 anchor_a, anchor_b;
     glm_quat_rotatev(constraint.particle_a->rotation, constraint.anchor_a, anchor_a);
     glm_vec3_add(anchor_a, constraint.particle_a->position, anchor_a);
@@ -99,7 +105,7 @@ float distanceConstraint(DistanceConstraint constraint) {
     return fabsf(glm_vec3_distance(anchor_a, anchor_b));
 }
 
-void distanceJacobian(DistanceConstraint constraint, vec12 jacobian) {
+void ballJointJacobian(BallJointConstraint constraint, vec12 jacobian) {
     vec3 anchor_a, anchor_b, world_anchor_a, world_anchor_b, difference, cross_a, cross_b;
     glm_quat_rotatev(constraint.particle_a->rotation, constraint.anchor_a, anchor_a);
     glm_quat_rotatev(constraint.particle_b->rotation, constraint.anchor_b, anchor_b);
@@ -139,20 +145,48 @@ float inertiaImpulseDenominator(vec12 jacobian, mat12 mass) {
     return elc_vec12_dot(jtm, jacobian);
 }
 
-float distanceViolation(DistanceConstraint constraint, vec12 jacobian, float dt) {
-    return -elc_vec12_dot(jacobian, V3V3V3V3_TO_V12(constraint.particle_a->velocity, constraint.particle_a->omega, constraint.particle_b->velocity, constraint.particle_b->omega)) - distanceConstraint(constraint) / dt;
+float ballJointViolation(BallJointConstraint constraint, vec12 jacobian, float dt) {
+    return -elc_vec12_dot(jacobian, V3V3V3V3_TO_V12(constraint.particle_a->velocity, constraint.particle_a->omega, constraint.particle_b->velocity, constraint.particle_b->omega)) - ballJointConstraint(constraint) / dt;
 }
 
-void applyDistanceConstraint(DistanceConstraint constraint, float dt) {
+void applyBallJointConstraint(BallJointConstraint constraint, float dt) {
     vec12 jacobian;
     mat12 mass_matrix;
     createMassInertiaMatrix(constraint.particle_a->mass, constraint.particle_a->inertia, constraint.particle_b->mass, constraint.particle_b->inertia, mass_matrix);
-    distanceJacobian(constraint, jacobian);
+    ballJointJacobian(constraint, jacobian);
     float den = inertiaImpulseDenominator(jacobian, mass_matrix);
+    glm_vec3_muladds(&jacobian[0], ballJointViolation(constraint, jacobian, dt) / den, constraint.particle_a->velocity);
+    glm_vec3_muladds(&jacobian[3], ballJointViolation(constraint, jacobian, dt) / den, constraint.particle_a->omega);
+    glm_vec3_muladds(&jacobian[6], ballJointViolation(constraint, jacobian, dt) / den, constraint.particle_b->velocity);
+    glm_vec3_muladds(&jacobian[9], ballJointViolation(constraint, jacobian, dt) / den, constraint.particle_b->omega);
+}
+
+float distanceConstraint(DistanceConstraint constraint) {
+    return fabsf(glm_vec3_distance(constraint.particle_a->position, constraint.particle_b->position)) - constraint.distance;
+}
+
+void distanceJacobian(vec3 point_a, vec3 point_b, vec6 jacobian) {
+    float norm = fabsf(glm_vec3_distance(point_a, point_b));
+    jacobian[0] = -((point_b[0] - point_a[0]) / norm);
+    jacobian[1] = -((point_b[1] - point_a[1]) / norm);
+    jacobian[2] = -((point_b[2] - point_a[2]) / norm);
+    jacobian[3] = (point_b[0] - point_a[0]) / norm;
+    jacobian[4] = (point_b[1] - point_a[1]) / norm;
+    jacobian[5] = (point_b[2] - point_a[2]) / norm;
+}
+
+float distanceViolation(DistanceConstraint constraint, vec6 jacobian, float dt) {
+    return -elc_vec6_dot(jacobian, V3V3_TO_V6(constraint.particle_a->velocity, constraint.particle_b->velocity)) - distanceConstraint(constraint) / dt;
+}
+
+void applyDistanceConstraint(DistanceConstraint constraint, float dt) {
+    vec6 jacobian;
+    mat6 mass_matrix;
+    createMassMatrix(constraint.particle_a->mass, constraint.particle_b->mass, mass_matrix);
+    distanceJacobian(constraint.particle_a->position, constraint.particle_b->position, jacobian);
+    float den = massImpulseDenominator(jacobian, mass_matrix);
     glm_vec3_muladds(&jacobian[0], distanceViolation(constraint, jacobian, dt) / den, constraint.particle_a->velocity);
-    glm_vec3_muladds(&jacobian[3], distanceViolation(constraint, jacobian, dt) / den, constraint.particle_a->omega);
-    glm_vec3_muladds(&jacobian[6], distanceViolation(constraint, jacobian, dt) / den, constraint.particle_b->velocity);
-    glm_vec3_muladds(&jacobian[9], distanceViolation(constraint, jacobian, dt) / den, constraint.particle_b->omega);
+    glm_vec3_muladds(&jacobian[3], distanceViolation(constraint, jacobian, dt) / den, constraint.particle_b->velocity);
 }
 
 void applyParticleGravity(Particle* particle, float dt) {
@@ -205,7 +239,7 @@ int main() {
     Particle particle_a = {.mass = 1.0f, .position = {5.0f}, .inertia = GLM_MAT3_IDENTITY_INIT};
     Particle particle_b = {.mass = 1.0f, .position = {10.0f}, .inertia = GLM_MAT3_IDENTITY_INIT};
     OriginConstraint origin_constraint_a = {.particle = &particle_a, .distance = 5.0f};
-    DistanceConstraint distance_constraint_a = {.particle_a = &particle_a, .particle_b = &particle_b, .anchor_a = {2.0f}, .anchor_b = {3.0f}};
+    DistanceConstraint distance_constraint_a = {.particle_a = &particle_a, .particle_b = &particle_b, .distance = 5.0f};
 
     while (!WindowShouldClose()) {
         float dt = (1.0f / 240.0f) / 1.0f;
